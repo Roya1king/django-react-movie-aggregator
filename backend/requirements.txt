@@ -1,0 +1,12 @@
+django
+djangorestframework
+django-cors-headers
+channels
+channels-redis
+daphne
+celery
+redis
+beautifulsoup4
+playwright
+uvicorn
+whitenoise

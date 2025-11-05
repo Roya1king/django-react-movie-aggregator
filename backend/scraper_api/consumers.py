@@ -1,0 +1,85 @@
+import json
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from asgiref.sync import sync_to_async
+from .models import SiteSource
+from .tasks import scrape_site
+
+# --- Database and Celery calls ---
+# These are synchronous, so we wrap them to be safely called from an async context
+
+@sync_to_async
+def get_active_sites():
+    # We use list() to force the database query to execute now
+    return list(SiteSource.objects.filter(is_active=True))
+
+@sync_to_async
+def start_scrape_task(site_id, term, channel_name):
+    # .delay() is a synchronous call, so it must also be wrapped
+    scrape_site.delay(site_id, term, channel_name)
+
+# --- Consumer ---
+
+class SearchConsumer(AsyncJsonWebsocketConsumer):
+    
+    async def connect(self):
+        """Called when the WebSocket is handshaking."""
+        await self.accept()
+        print(f"WebSocket connected: {self.channel_name}")
+
+    async def disconnect(self, close_code):
+        """Called when the WebSocket closes."""
+        print(f"WebSocket disconnected: {self.channel_name}")
+
+    async def receive_json(self, content):
+        """
+        Called when we get a message from React.
+        This is the trigger for the search.
+        """
+        action = content.get('action')
+        
+        if action == 'search':
+            term = content.get('term')
+            if not term:
+                await self.send_error_message_to_client("No search term provided.")
+                return
+
+            print(f"Starting search for: {term}")
+            
+            # Call our new async-safe database function
+            active_sites = await get_active_sites()
+            
+            if not active_sites:
+                await self.send_error_message_to_client("No active sites configured in admin.")
+                return
+
+            for site in active_sites:
+                # Call our new async-safe Celery function
+                await start_scrape_task(site.id, term, self.channel_name)
+
+    # --- These methods are called BY the channel layer ---
+
+    # --- THIS IS THE FIX ---
+    # Renamed from send_result to match the type in tasks.py
+    async def send_search_result(self, event):
+    # --- END FIX ---
+        """
+        Handler for the 'send_search_result' event from a task.
+        Sends the final data back to React/Postman.
+        """
+        await self.send_json(event['result']) # Send the 'result' dictionary
+
+    # --- THIS IS THE OTHER FIX ---
+    # Renamed from send_error to match the type in tasks.py
+    async def send_error_message(self, event):
+    # --- END FIX ---
+        """
+        Handler for the 'send_error_message' event from a task.
+        """
+        await self.send_error_message_to_client(event['message'])
+
+    async def send_error_message_to_client(self, message):
+        """Helper to send a JSON-formatted error to the client."""
+        await self.send_json({
+            'error': True,
+            'message': message
+        })
