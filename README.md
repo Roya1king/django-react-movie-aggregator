@@ -29,6 +29,7 @@ This root README brings together the essentials from both the backend and fronte
 - Python 3.10+
 - Node.js 16+ (or current LTS)
 - Docker Desktop (recommended) for Redis
+- Brave Browser (installed in the default location) for Selenium profile warm‑up
 
 ## 1) Start Redis
 
@@ -48,7 +49,7 @@ python -m venv venv
 .\venv\Scripts\activate
 pip install -r requirements.txt
 # Optional (if you use Selenium-based scrapers)
-pip install selenium-stealth
+pip install selenium-stealth webdriver-manager
 
 # Initialize DB and admin
 python manage.py migrate
@@ -70,9 +71,51 @@ cd frontend
 npm install
 ```
 
-## 4) Run the full stack (4 terminals)
+Build once if you want Django to serve the compiled SPA (no separate Vite server):
 
-You’ll typically run four processes:
+```powershell
+npm run build
+# Outputs: frontend/dist (can be served by Django in production)
+```
+
+## 4) Run the project
+
+You have two ways to run the UI during development:
+
+### A) Integrated mode — Django serves the built React app (3 backend terminals)
+
+This is simplest when you’ve built the frontend (`npm run build`). Make sure Redis is running.
+
+```powershell
+# Terminal 1 — Fast lane worker (backend)
+cd backend
+.\venv\Scripts\activate
+celery -A scraper_project worker --pool=threads -Q fast_queue -c 12 --loglevel=info
+```
+
+```powershell
+# Terminal 2 — Profile lane worker (backend)
+cd backend
+.\venv\Scripts\activate
+celery -A scraper_project worker --pool=threads -Q profile_queue -c 1 --loglevel=info
+```
+
+```powershell
+# Terminal 3 — ASGI server (backend)
+cd backend
+.\venv\Scripts\activate
+daphne -p 8000 scraper_project.asgi:application
+```
+
+Now visit:
+- App: http://localhost:8000
+- Admin: http://localhost:8000/admin
+
+Tip: Ensure your Django `TEMPLATES["DIRS"]` and static configuration are pointed at the built frontend if you’re serving `frontend/dist`.
+
+### B) Dev mode — Run Vite dev server (4 terminals)
+
+You’ll run four processes:
 
 - Fast lane Celery worker (simple HTTP scrapers)
 - Profile lane Celery worker (Selenium/Playwright; concurrency 1)
@@ -110,6 +153,24 @@ npm run dev
 - Backend (HTTP/WS): http://localhost:8000
 - Django Admin: http://localhost:8000/admin/
 
+---
+
+## One‑time Selenium profile warm‑up (CRITICAL)
+
+To reliably bypass Cloudflare on protected sites, warm a persistent Brave profile:
+
+```powershell
+# Close all Brave windows first
+cd backend
+.\venv\Scripts\activate
+python train_profile.py
+```
+
+In the Brave window that opens (your bot profile):
+- Sign in to Google at https://google.com
+- Visit and solve CAPTCHAs for each protected site you plan to scrape (e.g., https://hdhub4u.pictures/, https://vegamovies.gripe/, https://vegamovies.talk/)
+When done, close the window and stop the script (CTRL + C).
+
 ## WebSocket contract (search)
 
 - Endpoint: `ws://localhost:8000/ws/search/`
@@ -138,6 +199,53 @@ In Django Admin → Site Sources, define per‑site settings:
 - Search method (GET/POST) + endpoint (use %QUERY%)
 - Whether a full browser is required (Selenium/Playwright)
 - CSS selectors for result container, title, link, poster, and the attribute that holds image URLs
+
+### Example: HDHub4u1
+
+- Name: `HDHub4u1`
+- Base URL: `https://hdhub4u.pictures`
+- Search type: `GET Parameter`
+- Search endpoint: `/?s=%QUERY%`
+- Requires playwright: checked (routes to Selenium `profile_queue`)
+- Result container selector: `li.thumb`
+- Result title selector: `figcaption a p`
+- Result link selector: `figcaption a`
+- Result poster selector: `figure img`
+- Result poster attribute: `src`
+
+### Example: Vegamovies.talk
+
+- Name: `Vegamovies.talk`
+- Base URL: `https://vegamovies.talk`
+- Search type: `POST API`
+- Search endpoint: `/`
+- Post payload template:
+
+```
+do=search
+subaction=search
+story=%QUERY%
+```
+
+- Requires playwright: checked
+- Result container selector: `article.post-item`
+- Result title selector: `h3.entry-title a`
+- Result link selector: `h3.entry-title a`
+- Result poster selector: `img.blog-picture`
+- Result poster attribute: `src`
+
+### Example: Vegamovies.gripe
+
+- Name: `Vegamovies`
+- Base URL: `https://vegamovies.gripe`
+- Search type: `GET Parameter`
+- Search endpoint: `/?s=%QUERY%`
+- Requires playwright: checked
+- Result container selector: `article.grid-item`
+- Result title selector: `h2.post-title a`
+- Result link selector: `h2.post-title a`
+- Result poster selector: `img.wp-post-image`
+- Result poster attribute: `src`
 
 ## Environment variables (suggested)
 
