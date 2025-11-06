@@ -13,9 +13,24 @@ def get_active_sites():
     return list(SiteSource.objects.filter(is_active=True))
 
 @sync_to_async
-def start_scrape_task(site_id, term, channel_name):
-    # .delay() is a synchronous call, so it must also be wrapped
-    scrape_site.delay(site_id, term, channel_name)
+def start_scrape_task(site, term, channel_name):
+    """
+    This is the NEW, "queue-aware" function.
+    It checks if the site needs Selenium and sends the task
+    to the correct queue.
+    """
+    if site.requires_playwright:
+        # Send to the 'profile_queue' (which has -c 1)
+        scrape_site.apply_async(
+            args=[site.id, term, channel_name],
+            queue='profile_queue'
+        )
+    else:
+        # Send to the 'fast_queue' (which has -c 12)
+        scrape_site.apply_async(
+            args=[site.id, term, channel_name],
+            queue='fast_queue'
+        )
 
 # --- Consumer ---
 
@@ -32,7 +47,7 @@ class SearchConsumer(AsyncJsonWebsocketConsumer):
 
     async def receive_json(self, content):
         """
-        Called when we get a message from React.
+        Called when we get a message from React/Postman.
         This is the trigger for the search.
         """
         action = content.get('action')
@@ -45,7 +60,7 @@ class SearchConsumer(AsyncJsonWebsocketConsumer):
 
             print(f"Starting search for: {term}")
             
-            # Call our new async-safe database function
+            # Call our async-safe database function
             active_sites = await get_active_sites()
             
             if not active_sites:
@@ -53,25 +68,19 @@ class SearchConsumer(AsyncJsonWebsocketConsumer):
                 return
 
             for site in active_sites:
-                # Call our new async-safe Celery function
-                await start_scrape_task(site.id, term, self.channel_name)
+                # Call our NEW async-safe, queue-aware Celery function
+                await start_scrape_task(site, term, self.channel_name)
 
     # --- These methods are called BY the channel layer ---
 
-    # --- THIS IS THE FIX ---
-    # Renamed from send_result to match the type in tasks.py
     async def send_search_result(self, event):
-    # --- END FIX ---
         """
         Handler for the 'send_search_result' event from a task.
         Sends the final data back to React/Postman.
         """
         await self.send_json(event['result']) # Send the 'result' dictionary
 
-    # --- THIS IS THE OTHER FIX ---
-    # Renamed from send_error to match the type in tasks.py
     async def send_error_message(self, event):
-    # --- END FIX ---
         """
         Handler for the 'send_error_message' event from a task.
         """

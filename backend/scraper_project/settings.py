@@ -1,6 +1,15 @@
+# File: backend/scraper_project/settings.py
+
 from pathlib import Path
 
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# BASE_DIR is your 'backend' folder
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+
+# Quick-start development settings - unsuitable for production
+# See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
+
 SECRET_KEY = 'django-insecure-kpncfayqw=cdu_gcjv55kbcun-ae*t(q+eg8pjg+@y&q9539b+' # Change this!
 DEBUG = True
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
@@ -14,7 +23,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'whitenoise.runserver_nostatic',
+    'whitenoise.runserver_nostatic', # For serving static files
 
     # 3rd Party Apps
     'rest_framework',
@@ -29,7 +38,8 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware', # Whitenoise middleware
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # CORS middleware
+    # CORS is no longer needed in this setup, but harmless to leave
+    'corsheaders.middleware.CorsMiddleware', 
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -42,7 +52,9 @@ ROOT_URLCONF = 'scraper_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # --- THIS IS CORRECT ---
+        # Tells Django to look in your React 'dist' folder for index.html
+        'DIRS': [BASE_DIR.parent / 'frontend/dist'], 
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -54,6 +66,7 @@ TEMPLATES = [
         },
     },
 ]
+
 
 WSGI_APPLICATION = 'scraper_project.wsgi.application'
 
@@ -81,41 +94,56 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = '/static/'
+# This is where 'collectstatic' will put all admin files
 STATIC_ROOT = BASE_DIR / "staticfiles"
-# STATICFILES_DIRS = [
-#     BASE_DIR / "static",
-# ]
+
+# --- THIS IS THE FIX ---
+# Tells Django to look in your React 'dist' folder.
+# When the browser asks for '/static/assets/index.js',
+# Django will look in 'frontend/dist/assets/index.js'
+STATICFILES_DIRS = [
+    BASE_DIR.parent / "frontend/dist",
+]
+# --- END FIX ---
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Custom Settings ---
 
-# CORS (Cross-Origin Resource Sharing)
-# For development, allow React to connect (running on port 3000)
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+# --- REMOVED CORS_ALLOWED_ORIGINS ---
+# No longer needed, as React and Django are on the same domain.
+# ------------------------------------
 
 # ASGI (Asynchronous Server Gateway Interface)
-# This tells Django to use your asgi.py file for Channels
 ASGI_APPLICATION = 'scraper_project.asgi.application'
 
 # CHANNEL_LAYERS (for WebSockets)
-# Tells Channels to use Redis as the message broker
-# CHANNEL_LAYERS (for WebSockets)
-# Tells Channels to use Redis as the message broker
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],  # <-- Changed from localhost
+            "hosts": [('127.0.0.1', 6379)],
         },
     },
 }
+
 # CELERY (for Background Tasks)
-# Tells Celery to use Redis as the broker and result backend
-CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"  # <-- Changed from localhost
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
+
+# --- CELERY QUEUES ---
+CELERY_TASK_QUEUES = {
+    'fast_queue': {
+        'exchange': 'fast_queue',
+        'routing_key': 'fast_queue',
+    },
+    'profile_queue': {
+        'exchange': 'profile_queue',
+        'routing_key': 'profile_queue',
+    },
+}
+CELERY_TASK_DEFAULT_QUEUE = 'fast_queue'
+# --- END CELERY QUEUES ---
