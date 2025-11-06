@@ -1,36 +1,17 @@
+# File: backend/scraper_api/consumers.py
+
 import json
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from asgiref.sync import sync_to_async
 from .models import SiteSource
-from .tasks import scrape_site
+from .tasks import scrape_site # This is our one and only task
 
 # --- Database and Celery calls ---
-# These are synchronous, so we wrap them to be safely called from an async context
-
+# We still need this for the database call
 @sync_to_async
 def get_active_sites():
     # We use list() to force the database query to execute now
     return list(SiteSource.objects.filter(is_active=True))
-
-@sync_to_async
-def start_scrape_task(site, term, channel_name):
-    """
-    This is the NEW, "queue-aware" function.
-    It checks if the site needs Selenium and sends the task
-    to the correct queue.
-    """
-    if site.requires_playwright:
-        # Send to the 'profile_queue' (which has -c 1)
-        scrape_site.apply_async(
-            args=[site.id, term, channel_name],
-            queue='profile_queue'
-        )
-    else:
-        # Send to the 'fast_queue' (which has -c 12)
-        scrape_site.apply_async(
-            args=[site.id, term, channel_name],
-            queue='fast_queue'
-        )
 
 # --- Consumer ---
 
@@ -68,8 +49,10 @@ class SearchConsumer(AsyncJsonWebsocketConsumer):
                 return
 
             for site in active_sites:
-                # Call our NEW async-safe, queue-aware Celery function
-                await start_scrape_task(site, term, self.channel_name)
+                # --- THIS IS NOW SIMPLER ---
+                # Just send the job! No need to check for queues.
+                scrape_site.delay(site.id, term, self.channel_name)
+                # --- END SIMPLER CODE ---
 
     # --- These methods are called BY the channel layer ---
 

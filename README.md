@@ -1,182 +1,311 @@
-# Django + React Movie Aggregator (Monorepo)
 
-A full‑stack, real‑time movie scraper and aggregator with:
-- Backend: Django, Django Channels (WebSockets), Celery, Redis
-- Frontend: React (Vite + Tailwind)
-- Scraping: requests/BeautifulSoup and a profile‑based browser lane (Selenium/Playwright) for Cloudflare‑protected sites
+---
 
-This root README brings together the essentials from both the backend and frontend READMEs so you can set up and run everything end‑to‑end.
+```markdown
+# 🎬 Django + React Real-Time Scraper Engine
 
-## Monorepo layout
+A **full-stack real-time movie scraper and aggregator**, designed as a personal dashboard that can query multiple sites **simultaneously** — even **Cloudflare-protected** ones — and stream the results back to a web interface **in real-time**.
+
+---
+
+## 🧠 Core Architecture
+
+- **Backend:** Django + Django Channels (WebSockets)  
+- **Frontend:** React (built with **Vite**, served directly by Django)  
+- **Task Queuing:** Celery + Redis  
+- **Scraping Engine:**
+  - `requests` + `BeautifulSoup` → for fast and simple sites  
+  - `Selenium` + **Brave Browser** → for Cloudflare-protected or JavaScript-heavy sites  
+- **Concurrency Model:**  
+  - `fast_queue` → for lightweight request-based scrapers  
+  - `profile_queue` → for heavy Selenium tasks (run one at a time to prevent Brave profile corruption)
+
+---
+
+## 📁 Project Structure
 
 ```
-.
-├── backend/            # Django app (Channels, Celery workers, admin, tasks)
+
+my_search_project/
+├── backend/
 │   ├── manage.py
+│   ├── train_profile.py        <-- IMPORTANT: warms up Brave profile
 │   ├── requirements.txt
-│   ├── scraper_project/
-│   └── scraper_api/
-└── frontend/           # React (Vite) app
-    ├── src/
-    ├── public/
-    ├── package.json
-    └── vite.config.js
-```
+│   ├── scraper_project/        (Django project)
+│   └── scraper_api/            (Django app)
+├── frontend/
+│   ├── dist/                   <-- React app build output
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.js          <-- Configured for Django
+└── README.md                   <-- This file
 
-## Prerequisites
+````
 
-- Windows PowerShell (these instructions use PS syntax)
-- Python 3.10+
-- Node.js 16+ (or current LTS)
-- Docker Desktop (recommended) for Redis
+---
 
-## 1) Start Redis
+## ⚙️ Prerequisites
 
-Run Redis in a container (recommended):
+1. **Python 3.10+** (✅ You are using 3.14 — perfect)  
+2. **Node.js & npm** — for building the React app  
+3. **Docker Desktop** — to run Redis easily  
+4. **Brave Browser** — must be installed in the default location  
 
-```powershell
-# Terminal A (any folder)
-docker run -d -p 6379:6379 redis
-```
+---
 
-## 2) Backend setup (Django)
+## 🚀 Step 1: One-Time Project Setup
 
-```powershell
-# Terminal B
-cd backend
+### 🟥 A. Start Redis (Docker)
+
+Start Redis in a Docker container (only once):
+
+```bash
+docker run -d -p 6379:6379 --name my-scraper-redis redis
+````
+
+> 💡 If you get “port already allocated”, it just means Redis is already running (visible in Docker Desktop).
+
+---
+
+### 🟩 B. Backend Setup
+
+Open a terminal in the `backend/` folder.
+
+#### 1. Create and activate a virtual environment
+
+```bash
 python -m venv venv
 .\venv\Scripts\activate
-pip install -r requirements.txt
-# Optional (if you use Selenium-based scrapers)
-pip install selenium-stealth
+```
 
-# Initialize DB and admin
+#### 2. Install dependencies
+
+```bash
+pip install -r requirements.txt
+pip install selenium-stealth webdriver-manager
+```
+
+#### 3. Initialize the database
+
+```bash
 python manage.py migrate
+```
+
+#### 4. Create an admin user
+
+```bash
 python manage.py createsuperuser
 ```
 
-Optional: one‑time “profile warm‑up” for Cloudflare‑heavy sites (Selenium + Brave). Make sure all Brave windows are closed before running:
+---
 
-```powershell
-python train_profile.py
-# A Brave window opens. Log in to Google, visit target sites, solve CAPTCHAs, then Ctrl+C to stop.
-```
+### 🟦 C. Frontend Setup
 
-## 3) Frontend setup (React + Vite)
+Open a **new terminal** in the `frontend/` folder.
 
-```powershell
-# Terminal C
-cd frontend
+#### 1. Install Node modules
+
+```bash
 npm install
 ```
 
-## 4) Run the full stack (4 terminals)
+#### 2. Build the React app
 
-You’ll typically run four processes:
-
-- Fast lane Celery worker (simple HTTP scrapers)
-- Profile lane Celery worker (Selenium/Playwright; concurrency 1)
-- ASGI server (Daphne)
-- Vite dev server (frontend)
-
-```powershell
-# Terminal B — Fast lane worker (backend)
-cd backend
-.\venv\Scripts\activate
-celery -A scraper_project worker -Q fast_queue -c 10 --pool=threads --loglevel=info
+```bash
+npm run build
 ```
 
-```powershell
-# Terminal D — Profile lane worker (backend)
-cd backend
-.\venv\Scripts\activate
-celery -A scraper_project worker -Q profile_queue -c 1 --pool=threads --loglevel=info
+> 🏗️ This creates the `frontend/dist/` folder, which Django will serve.
+
+---
+
+### 🔥 D. Browser Profile Warm-Up (**CRITICAL**)
+
+This step “trains” your Selenium Brave profile to look like a real human user and defeat Cloudflare.
+
+#### 1. Close **all** Brave browser windows.
+
+#### 2. Run the training script:
+
+```bash
+# In backend/ (with venv active)
+python train_profile.py
 ```
 
-```powershell
-# Terminal E — ASGI server (backend)
-cd backend
+A **Brave window** will pop up — this is your **BraveSeleniumProfile**.
+
+#### 3. In that Brave window:
+
+1. Go to [https://google.com](https://google.com) → log in with your Google account (this builds trust).
+2. Visit and manually solve CAPTCHAs on:
+
+   * [https://hdhub4u.pictures/](https://hdhub4u.pictures/)
+   * [https://vegamovies.gripe/](https://vegamovies.gripe/)
+   * [https://vegamovies.talk/](https://vegamovies.talk/)
+3. Once all sites load normally → **close Brave** and stop the script (`CTRL + C`).
+
+✅ Your profile is now warmed and trusted.
+
+---
+
+## 🏃 Step 2: Run the Project
+
+You need **three backend terminals** (plus Docker running Redis).
+You do **not** need to run `npm start`.
+
+---
+
+### 🧩 Terminal 1: Fast Queue Worker
+
+Handles lightweight `requests`-based scrapers.
+
+```bash
+# In backend/
+.\venv\Scripts\activate
+celery -A scraper_project worker --pool=threads -Q fast_queue -c 12 --loglevel=info
+```
+
+---
+
+### 🧩 Terminal 2: Selenium/Profile Queue Worker
+
+Handles Selenium scrapers one at a time (safe mode).
+
+```bash
+# In backend/
+.\venv\Scripts\activate
+celery -A scraper_project worker --pool=threads -Q profile_queue -c 1 --loglevel=info
+```
+
+---
+
+### 🧩 Terminal 3: Web Server (Daphne)
+
+Serves React frontend + WebSocket connections.
+
+```bash
+# In backend/
 .\venv\Scripts\activate
 daphne -p 8000 scraper_project.asgi:application
 ```
 
-```powershell
-# Terminal C — Frontend dev server
-cd frontend
-npm run dev
-```
+Your app is live 🎉
 
-- Frontend: http://localhost:5173
-- Backend (HTTP/WS): http://localhost:8000
-- Django Admin: http://localhost:8000/admin/
-
-## WebSocket contract (search)
-
-- Endpoint: `ws://localhost:8000/ws/search/`
-- Client → Server (start a search):
-
-```json
-{ "action": "search", "term": "your movie" }
-```
-
-- Server → Client (result):
-
-```json
-{ "source": "SiteName", "title": "Movie Title", "link": "https://...", "poster": "https://..." }
-```
-
-- Server → Client (error):
-
-```json
-{ "error": true, "message": "Failed to fetch data from ..." }
-```
-
-## Admin: Site configuration
-
-In Django Admin → Site Sources, define per‑site settings:
-- Base URL, active flag
-- Search method (GET/POST) + endpoint (use %QUERY%)
-- Whether a full browser is required (Selenium/Playwright)
-- CSS selectors for result container, title, link, poster, and the attribute that holds image URLs
-
-## Environment variables (suggested)
-
-Consider using .env files for local secrets:
-
-```
-# backend/.env (example)
-DJANGO_DEBUG=True
-DJANGO_SECRET_KEY=replace-me
-ALLOWED_HOSTS=127.0.0.1,localhost
-REDIS_URL=redis://127.0.0.1:6379/0
-```
-
-```
-# frontend/.env (example)
-VITE_API_BASE=http://localhost:8000
-VITE_WS_URL=ws://localhost:8000/ws/search/
-```
-
-Your repo’s root .gitignore already ignores `.env` files but allows `*.example` variants. If you want, we can add `backend/.env.example` and `frontend/.env.example` for onboarding.
-
-## Troubleshooting
-
-- Selenium scrapers fail instantly → ensure you ran `train_profile.py` with all Brave windows closed and solved CAPTCHAs for protected sites.
-- Profile queue crashing/locking → keep `profile_queue` at `-c 1` (single concurrency).
-- Import errors for `daphne`/`channels` → verify your virtualenv is activated in every backend terminal.
-- Redis connection errors → make sure the container is running and listening on 6379.
-
-## Useful scripts
-
-Backend (from `backend/`):
-- Migrations: `python manage.py makemigrations && python manage.py migrate`
-- Admin superuser: `python manage.py createsuperuser`
-
-Frontend (from `frontend/`):
-- Dev: `npm run dev`
-- Build: `npm run build` (outputs to `frontend/dist/`)
-- Preview: `npm run preview`
+* **Frontend:** [http://localhost:8000](http://localhost:8000)
+* **Admin Panel:** [http://localhost:8000/admin](http://localhost:8000/admin)
 
 ---
 
-For production, review security settings (SECRET_KEY rotation, ALLOWED_HOSTS), configure a production ASGI server, and consider Docker Compose to wire Redis, Django, workers, and the frontend together. If you’d like, I can add a `docker-compose.yml` and `.env.example` files to streamline local and prod setups.
+## ⚙️ Step 3: Configure Scrapers (via Admin)
+
+1. Go to [http://localhost:8000/admin](http://localhost:8000/admin)
+2. Log in with your superuser credentials.
+3. Under **“Site Sources”**, click **“Add Site Source +”**.
+4. Fill in each site’s scraping pattern.
+
+---
+
+### 🧩 Example: HDHub4u
+
+| Field                         | Value                                                |
+| ----------------------------- | ---------------------------------------------------- |
+| **Name**                      | HDHub4u                                              |
+| **Base URL**                  | [https://hdhub4u.pictures](https://hdhub4u.pictures) |
+| **Search Type**               | GET Parameter                                        |
+| **Search Endpoint**           | `/?s=%QUERY%`                                        |
+| **Requires playwright**       | ✅ *(Sends to Selenium queue)*                        |
+| **Result container selector** | `li.thumb`                                           |
+| **Result title selector**     | `figcaption a p`                                     |
+| **Result link selector**      | `figcaption a`                                       |
+| **Result poster selector**    | `figure img`                                         |
+| **Result poster attribute**   | `src`                                                |
+
+---
+
+### 🧩 Example: Vegamovies.talk
+
+| Field                         | Value                                              |
+| ----------------------------- | -------------------------------------------------- |
+| **Name**                      | Vegamovies.talk                                    |
+| **Base URL**                  | [https://vegamovies.talk](https://vegamovies.talk) |
+| **Search Type**               | POST API                                           |
+| **Search Endpoint**           | `/`                                                |
+| **Post Payload Template**     | `do=search`, `subaction=search`, `story=%QUERY%`   |
+| **Requires playwright**       | ✅                                                  |
+| **Result container selector** | `article.post-item`                                |
+| **Result title selector**     | `h3.entry-title a`                                 |
+| **Result link selector**      | `h3.entry-title a`                                 |
+| **Result poster selector**    | `img.blog-picture`                                 |
+| **Result poster attribute**   | `src`                                              |
+
+---
+
+### 🧩 Example: Vegamovies.gripe
+
+| Field                         | Value                                                |
+| ----------------------------- | ---------------------------------------------------- |
+| **Name**                      | Vegamovies                                           |
+| **Base URL**                  | [https://vegamovies.gripe](https://vegamovies.gripe) |
+| **Search Type**               | GET Parameter                                        |
+| **Search Endpoint**           | `/?s=%QUERY%`                                        |
+| **Requires playwright**       | ✅                                                    |
+| **Result container selector** | `article.grid-item`                                  |
+| **Result title selector**     | `h2.post-title a`                                    |
+| **Result link selector**      | `h2.post-title a`                                    |
+| **Result poster selector**    | `img.wp-post-image`                                  |
+| **Result poster attribute**   | `src`                                                |
+
+---
+
+## 🔌 WebSocket API
+
+**Endpoint:**
+
+```
+ws://localhost:8000/ws/search/
+```
+
+### 🔄 Client → Server (Start a Search)
+
+```json
+{
+  "action": "search",
+  "term": "your movie"
+}
+```
+
+### 📡 Server → Client (Result)
+
+```json
+{
+  "source": "SiteName",
+  "title": "Movie Title",
+  "link": "https://...",
+  "poster": "https://..."
+}
+```
+
+### ⚠️ Server → Client (Error)
+
+```json
+{
+  "error": true,
+  "message": "Failed to fetch data from ..."
+}
+```
+
+---
+
+## 🧭 Notes & Tips
+
+* Always **train your Brave profile** before using Selenium scrapers.
+* You can add or remove sources dynamically via the Admin Panel.
+* The **frontend is static** — you only rebuild (`npm run build`) if you modify it.
+* For production, configure your `.env` and run **Daphne + Celery workers** with a process manager like `supervisor` or `systemd`.
+
+---
+
+## 🏁 That’s It!
+
+Your **Django + React Real-Time Scraper Engine** is ready.
+You now have a **parallel, Cloudflare-resistant scraping system** that streams movie results instantly.

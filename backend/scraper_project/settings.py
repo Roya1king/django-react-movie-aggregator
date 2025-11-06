@@ -1,6 +1,7 @@
 # File: backend/scraper_project/settings.py
 
 from pathlib import Path
+import os # Make sure this is imported
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 # BASE_DIR is your 'backend' folder
@@ -38,7 +39,6 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware', # Whitenoise middleware
     'django.contrib.sessions.middleware.SessionMiddleware',
-    # CORS is no longer needed in this setup, but harmless to leave
     'corsheaders.middleware.CorsMiddleware', 
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -52,8 +52,6 @@ ROOT_URLCONF = 'scraper_project.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        # --- THIS IS CORRECT ---
-        # Tells Django to look in your React 'dist' folder for index.html
         'DIRS': [BASE_DIR.parent / 'frontend/dist'], 
         'APP_DIRS': True,
         'OPTIONS': {
@@ -94,25 +92,14 @@ USE_TZ = True
 
 # Static files
 STATIC_URL = '/static/'
-# This is where 'collectstatic' will put all admin files
 STATIC_ROOT = BASE_DIR / "staticfiles"
-
-# --- THIS IS THE FIX ---
-# Tells Django to look in your React 'dist' folder.
-# When the browser asks for '/static/assets/index.js',
-# Django will look in 'frontend/dist/assets/index.js'
 STATICFILES_DIRS = [
     BASE_DIR.parent / "frontend/dist",
 ]
-# --- END FIX ---
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # --- Custom Settings ---
-
-# --- REMOVED CORS_ALLOWED_ORIGINS ---
-# No longer needed, as React and Django are on the same domain.
-# ------------------------------------
 
 # ASGI (Asynchronous Server Gateway Interface)
 ASGI_APPLICATION = 'scraper_project.asgi.application'
@@ -134,16 +121,6 @@ CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 
-# --- CELERY QUEUES ---
-CELERY_TASK_QUEUES = {
-    'fast_queue': {
-        'exchange': 'fast_queue',
-        'routing_key': 'fast_queue',
-    },
-    'profile_queue': {
-        'exchange': 'profile_queue',
-        'routing_key': 'profile_queue',
-    },
-}
-CELERY_TASK_DEFAULT_QUEUE = 'fast_queue'
-# --- END CELERY QUEUES ---
+# --- QUEUE SETTINGS ARE NO LONGER NEEDED ---
+# We can run everything in one fast queue now
+CELERY_TASK_DEFAULT_QUEUE = 'celery'

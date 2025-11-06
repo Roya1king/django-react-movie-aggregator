@@ -1,0 +1,23 @@
+# File: docker-compose.yml
+# (Save this in your root 'my_search_project/' folder)
+
+version: '3.8'
+services:
+  
+  # 1. The Redis Service (Message Broker)
+  redis:
+    image: redis:latest
+    container_name: my-scraper-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  # 2. The FlareSolverr Service (Cloudflare Bypass)
+  flaresolverr:
+    image: flaresolverr/flaresolverr:latest
+    container_name: my-scraper-flaresolverr
+    ports:
+      - "8191:8191"
+    environment:
+      - LOG_LEVEL=info
+    restart: unless-stopped
